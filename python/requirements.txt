@@ -1,0 +1,4 @@
+pyserial==3.5
+mysql-connector-python==9.0.0
+pandas==2.2.2
+matplotlib==3.9.0

@@ -1,0 +1,16 @@
+# Virtual Environment
+iot_env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data & Reports
+documentos/
+*.csv
+*.png
+
+# IDEs
+.vscode/
+.idea/
