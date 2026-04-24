@@ -6,10 +6,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Data & Reports
-*.csv
-*.png
-
 # IDEs
 .vscode/
 .idea/
