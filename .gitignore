@@ -7,7 +7,6 @@ __pycache__/
 *$py.class
 
 # Data & Reports
-documentos/
 *.csv
 *.png
 
