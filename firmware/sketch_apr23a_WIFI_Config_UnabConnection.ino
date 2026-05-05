@@ -5,14 +5,15 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiManager.h>
+#include <WiFiClientSecure.h>
 
 TFT_eSPI tft = TFT_eSPI(); 
 
 // ==========================================
-// 1. CONFIGURACIÓN DE NUBE (THINGSPEAK)
+// 1. CONFIGURACIÓN DE NUBE (UNIVERSIDAD - GRUPO 2)
 // ==========================================
-String apiKey = "WPJLX77LHQVRNEK1"; 
-const char* server = "http://api.thingspeak.com/update";
+// Endpoint oficial del Grupo 2 (Actualizado a HTTPS)
+const char* serverUrl = "https://grupo2top3.comunidadingenieria.cl/ingesta.php"; 
 
 bool wifiActivado = false; 
 
@@ -41,7 +42,7 @@ unsigned long ultimoTiempoNube = 0;
 // --- LÓGICA TÁCTIL (5 SEGUNDOS) ---
 unsigned long tiempoInicioToque = 0;
 bool estaTocando = false;
-int ultimoPixelX = 0; // Para saber qué botón estaba presionando
+int ultimoPixelX = 0; 
 
 // Variables Globales de Nube
 float ultimaTemp = -100.0;
@@ -66,9 +67,9 @@ void setup() {
   wm.setConnectTimeout(10);
   if(wm.autoConnect("ESP32_Smart_Monitor")) {
       wifiActivado = true;
+      Serial.println("WiFi Conectado Automáticamente");
   }
 
-  // Dibujamos la interfaz EXACTA que teníamos
   dibujarInterfazBasica();
   dibujarGuiaCables();
 }
@@ -96,10 +97,8 @@ void loop() {
       
       if (duracion < 5000) { 
         if (ultimoPixelX < 160) {
-          // Cambiar sensor
           modoActual = (modoActual == 0) ? 1 : 0;
         } else {
-          // Encender/Apagar WiFi
           wifiActivado = !wifiActivado;
           if(wifiActivado) WiFi.begin(); else WiFi.disconnect();
         }
@@ -115,7 +114,7 @@ void loop() {
   // --- 2. REFRESCO DE PANTALLA (CADA 2 SEGUNDOS) ---
   if (millis() - ultimoTiempoPantalla > 2000) { 
     ultimoTiempoPantalla = millis();
-    tft.fillRect(10, 60, 300, 85, TFT_BLACK); // Borrado parcial anti-flicker
+    tft.fillRect(10, 60, 300, 85, TFT_BLACK); 
 
     if (modoActual == 0) {
       mostrarDatosDHT();
@@ -134,7 +133,7 @@ void loop() {
 }
 
 // ==========================================
-// 3. PORTAL CAUTIVO (NUEVA FUNCIÓN, SIN DAÑAR UI)
+// 3. PORTAL CAUTIVO 
 // ==========================================
 void activarModoConfiguracion() {
   tft.fillScreen(TFT_BLUE);
@@ -147,31 +146,58 @@ void activarModoConfiguracion() {
   
   WiFiManager wm;
   if (!wm.startConfigPortal("ESP32_Setup")) {
-    ESP.restart(); // Si falla, reiniciamos la placa por seguridad
+    ESP.restart(); 
   }
   
-  // Si se configuró con éxito, restauramos la UI
   wifiActivado = true;
   tft.fillScreen(TFT_BLACK);
   dibujarInterfazBasica();
   dibujarGuiaCables();
 }
 
+// ==========================================
+// NUEVA FUNCIÓN: ENVÍO HTTP POST A TU SERVIDOR
+// ==========================================
 void enviarDatosNube() {
-  HTTPClient http;
-  String url = String(server) + "?api_key=" + apiKey;
   if (modoActual == 0 && ultimaTemp != -100.0) {
-    url += "&field1=" + String(ultimaTemp) + "&field2=" + String(ultimaHum);
+    // Enviamos Temperatura
+    enviarPost("DHT22_Temp", ultimaTemp);
+    delay(500); // Pequeña pausa de medio segundo para no saturar el servidor
+    // Enviamos Humedad
+    enviarPost("DHT22_Hum", ultimaHum);
+    
   } else if (modoActual == 1 && ultimoGas != -1) {
-    url += "&field3=" + String(ultimoGas);
+    // Enviamos Gas
+    enviarPost("MQ_Gas", ultimoGas);
   }
-  http.begin(url);
-  http.GET(); 
+}
+
+void enviarPost(String nombreDispositivo, float valor) {
+  WiFiClientSecure client;
+  client.setInsecure(); // Ignora el certificado SSL para evitar bloqueos del servidor
+  
+  HTTPClient http;
+  http.begin(client, serverUrl); // Usamos el cliente seguro
+  
+  // Especificamos que enviaremos datos tipo formulario
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  
+  // Construimos el cuerpo del mensaje: dispositivo=X&valor=Y
+  String postData = "dispositivo=" + nombreDispositivo + "&valor=" + String(valor);
+  
+  int httpCode = http.POST(postData); 
+  
+  if (httpCode > 0) {
+    // El manual pide imprimir el código de respuesta (Ej: HTTP 200) y "Envio Exitoso"
+    Serial.printf("[POST OK] %s -> %.2f (HTTP %d) - Envio Exitoso\n", nombreDispositivo.c_str(), valor, httpCode);
+  } else {
+    Serial.printf("[POST ERROR] Fallo envio de %s: %s\n", nombreDispositivo.c_str(), http.errorToString(httpCode).c_str());
+  }
   http.end();
 }
 
 // ==========================================
-// 4. FUNCIONES DE INTERFAZ GRÁFICA (100% ORIGINALES)
+// 4. FUNCIONES DE INTERFAZ GRÁFICA (INTACTAS)
 // ==========================================
 void dibujarInterfazBasica() {
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -179,7 +205,6 @@ void dibujarInterfazBasica() {
   tft.drawCentreString(modoActual == 0 ? "MONITOR: TEMPERATURA" : "MONITOR: GAS AMBIENTAL", 160, 10, 2);
   tft.drawFastHLine(10, 40, 300, TFT_BLUE); 
   
-  // Botones Inferiores intactos
   tft.fillRoundRect(10, 190, 140, 40, 5, TFT_DARKGREY);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
@@ -233,12 +258,11 @@ void mostrarDatosGas() {
   if (nivelGas < 200 || nivelGas >= 4090) { 
       tft.setTextColor(TFT_RED, TFT_BLACK);
       tft.drawCentreString("DESCONECTADO", 160, 80, 4);
-      tft.fillRect(20, 115, 280, 20, TFT_BLACK); // Borramos barra anterior
+      tft.fillRect(20, 115, 280, 20, TFT_BLACK); 
       ultimoGas = -1;
   } else {
       ultimoGas = nivelGas;
       
-      // Lógica de colores intacta
       uint16_t colorGas = TFT_GREEN;           
       if (nivelGas > 1500) colorGas = TFT_RED; 
       else if (nivelGas > 950) colorGas = TFT_ORANGE; 
@@ -246,7 +270,6 @@ void mostrarDatosGas() {
       tft.setTextColor(colorGas, TFT_BLACK);
       tft.drawCentreString("Nivel: " + String(nivelGas), 160, 65, 4);
 
-      // Gráfico de Barras intacto
       tft.drawRect(20, 115, 280, 20, TFT_WHITE);
       int anchoBarra = map(nivelGas, 750, 4090, 0, 276); 
       if (anchoBarra < 0) anchoBarra = 0;
