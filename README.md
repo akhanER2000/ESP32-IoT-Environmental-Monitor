@@ -1,33 +1,40 @@
 # 🌡️ ESP32 Smart Environmental Monitor
 
-Este proyecto consiste en una estación de monitoreo IoT híbrida, que utiliza una placa **ESP32-2432S028** (con pantalla TFT táctil) para medir, visualizar y transmitir datos ambientales hacia un servidor en producción.
+Este proyecto consiste en una estación de monitoreo IoT híbrida, que utiliza una arquitectura de **Red de Nodos (Maestro-Esclavo)** para medir, visualizar y transmitir datos ambientales hacia un servidor en producción.
 
-## 🚀 Características y Arquitectura
-- **Arquitectura de Ingesta (Nube):** Se ha eliminado la dependencia de ThingSpeak y servidores locales XAMPP. Ahora, la ESP32 envía directamente las lecturas mediante peticiones **HTTP POST (HTTPS)** a nuestro servidor remoto universitario (`grupo2top3.comunidadingenieria.cl`).
-- **Backend PHP:** Se implementó una API robusta (`ingesta.php`) construida con **PDO** para la inserción segura en MySQL. Además, este backend gestiona automáticamente la zona horaria (`America/Santiago`), insertando la marca de tiempo (timestamp) de forma precisa para asegurar la integridad absoluta de la serie de tiempo.
-- **Firmware Avanzado:** 
-  - **WiFiManager:** Incluye un Portal Cautivo que permite configurar las credenciales de red desde el celular, sin necesidad de reprogramar la placa.
-  - **WiFiClientSecure:** Implementado para soportar conexiones cifradas y evadir restricciones de certificados en las peticiones HTTPS hacia el servidor.
-- **Interfaz Táctil Dinámica:** Cambio intuitivo entre el monitor de Clima (DHT22) y el de Gas (MQ), con reportes visuales en tiempo real.
+## 🚀 Arquitectura y Topología de Red
+- **Gateway Maestro (CYD):** La placa ESP32 principal (con pantalla táctil) ahora actúa como un Gateway inteligente. Recolecta sus propios datos locales y escucha peticiones inalámbricas de otros nodos mediante el protocolo de latencia ultrabaja **ESP-NOW**.
+- **Nodo Esclavo (Remoto):** Una segunda placa ESP32 en protoboard, encargada de recolectar datos remotos (Gas y Humedad de Tierra), que transmite al Maestro de forma instantánea y sin depender de una red WiFi local.
+- **Ingesta en Segundo Plano (Background Sync):** El Maestro procesa y envía un *payload* completo a nuestra API remota cada 15 segundos sin interrumpir la interfaz de usuario (UI), recolectando datos de todos los sensores sin importar en qué pantalla se encuentre el usuario.
 
-## 🎯 Objetivo Big Data
-El sistema completo fue diseñado para operar de forma autónoma e ininterrumpida durante **5 días continuos**. El propósito es generar un dataset masivo, óptimo y sin huecos (gaps) para su posterior análisis, limpieza y modelado con el ecosistema de **Apache Spark / PySpark**.
+## 📡 Estandarización de Datos
+Los identificadores enviados vía POST al servidor PHP (`grupo2top3.comunidadingenieria.cl`) han sido estrictamente estandarizados para asegurar la coherencia en la Base de Datos:
+- `Local_DHT22_Temp`: Temperatura del aire local (DHT22 conectado al Maestro).
+- `Local_DHT22_Hum`: Humedad del aire local (DHT22 conectado al Maestro).
+- `Local_MQ135`: Nivel de gas detectado por el sensor analógico del Maestro.
+- `Remoto_MQ135`: Nivel de gas detectado por el Nodo Esclavo.
+- `Remoto_Humedad_Tierra`: Nivel de humedad del suelo detectado por el Nodo Esclavo.
 
 ## 🛠️ Hardware Utilizado
-- **Controlador:** ESP32-2432S028 (Cheap Yellow Display).
-- **Sensor 1:** DHT22 (Temperatura y Humedad).
-- **Sensor 2:** MQ-Series (Gas Analógico).
-- **Conexión:** WiFi (2.4 GHz) con soporte de encriptación TLS/SSL.
+- **Gateway (Maestro):** ESP32-2432S028 (Cheap Yellow Display).
+- **Esclavo:** Placa ESP32 estándar (Protoboard).
+- **Sensores Locales:** DHT22 y MQ135.
+- **Sensores Remotos:** MQ135 y Sensor de Humedad de Tierra.
+- **Conectividad:** ESP-NOW (comunicación entre placas) + WiFi/HTTPS (conexión nube).
 
 ## 📂 Estructura del Proyecto
-- `/firmware`: Código `.ino` para Arduino IDE (incluye lógica de red y conexión segura).
-- `/backend`: Scripts PHP (`ingesta.php`) listos para el servidor universitario.
-- `/database`: Esquema SQL y consultas de administración.
-- `/python`: Scripts legacy y utilidades opcionales.
+- `/firmware/master_cyd`: Código `.ino` del Gateway (ESP32 con Pantalla táctil).
+- `/firmware/slave_sensor`: Código `.ino` del Nodo Remoto.
+- `/backend`: Scripts PHP (`ingesta.php`) alojados en el servidor universitario.
+- `/database`: Esquema SQL unificado (`lecturas_sensores`) para el backend.
 
 ## 📖 Instrucciones de Uso (Configuración WiFi / Portal Cautivo)
-1. **Activar WiFi:** Toca el botón "WIFI" en la pantalla táctil.
+1. **Activar WiFi:** Toca el botón "WIFI" en la pantalla táctil del Maestro.
 2. **Modo Configuración:** Mantén presionado el mismo botón táctil durante **5 segundos**. La pantalla cambiará a un fondo azul indicando el "MODO CONFIGURACION".
 3. **Punto de Acceso:** La placa creará automáticamente una red inalámbrica llamada `ESP32_Setup`.
-4. **Conexión Móvil:** Usa tu smartphone para conectarte a esta red. Se desplegará un menú automático (o ingresa a `192.168.4.1`) donde podrás introducir la clave del WiFi del lugar donde te encuentres.
-5. **Transmisión Autónoma:** Tras conectarse con éxito, la ESP32 guardará la configuración y comenzará el envío ininterrumpido a nuestra API en PHP.
+4. **Conexión Móvil:** Usa tu smartphone para conectarte a esta red y navega a `192.168.4.1` (si no se abre automáticamente) para introducir la clave de tu router local.
+5. **Transmisión Autónoma:** Tras conectarse con éxito, el Maestro guardará la configuración y comenzará el envío ininterrumpido en segundo plano.
+
+## 💡 Mejoras Recientes de UI y Hardware
+- **Resolución ADC2:** Implementado un *workaround* de lectura en el sensor de gas local que soluciona de forma definitiva los conflictos nativos cuando la antena WiFi está activada.
+- **Unificación Visual:** Las pantallas del sensor de gas (tanto local como remoto) ahora comparten un elegante diseño de "barras de señal" dinámicas (verde/amarillo/rojo) para una rápida interpretación de la peligrosidad del aire.
