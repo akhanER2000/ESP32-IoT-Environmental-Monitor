@@ -1,5 +1,6 @@
-# Virtual Environment
+# Virtual Environments
 iot_env/
+spark_env/
 
 # Python
 __pycache__/
@@ -9,3 +10,7 @@ __pycache__/
 # IDEs
 .vscode/
 .idea/
+
+# Tool configs
+.claude/
+.hadoop/
