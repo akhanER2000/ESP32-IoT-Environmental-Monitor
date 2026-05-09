@@ -38,6 +38,9 @@ void setup() {
   
   // Iniciamos WiFi
   WiFi.mode(WIFI_STA);
+  
+  // CORRECCIÓN CRÍTICA: Configura el ADC para leer el rango completo de 0 a 3.3V
+  analogSetAttenuation(ADC_11db);
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error inicializando ESP-NOW");
@@ -82,12 +85,31 @@ void loop() {
     misDatos.gas = lecturaBrutaGas;
   }
 
+  // --- SECCIÓN DE LECTURA DE TIERRA CORREGIDA ---
   int lecturaBrutaTierra = analogRead(PIN_TIERRA);
-  if (lecturaBrutaTierra < 100 || lecturaBrutaTierra >= 4090) {
-    misDatos.humedad_tierra = -1; 
-  } else {
-    misDatos.humedad_tierra = map(lecturaBrutaTierra, 4095, 0, 0, 100); 
-    misDatos.humedad_tierra = constrain(misDatos.humedad_tierra, 0, 100); 
+
+  // Diagnóstico por Serial (Mantenlo para calibrar)
+  Serial.print("Raw Tierra: "); 
+  Serial.println(lecturaBrutaTierra);
+
+  // LÓGICA DE DETECCIÓN DE CONEXIÓN
+  // Si el valor es extremo (cerca de 0 o cerca de 4095), asumimos desconexión
+  if (lecturaBrutaTierra > 4050 || lecturaBrutaTierra < 100) {
+    misDatos.humedad_tierra = -1; // Marcamos como "Sensor desconectado"
+    Serial.println("⚠️ Sensor de tierra NO detectado (Pin Flotando)");
+  } 
+  else {
+    // Si el valor está en el rango normal del sensor (100 a 4050)
+    // Ajustamos el mapa con los valores reales de tu sensor seco/mojado
+    // 3200 = Seco (0%) | 1500 = Mojado (100%)
+    int porcentaje = map(lecturaBrutaTierra, 3200, 1500, 0, 100);
+    
+    // Aseguramos que el resultado esté entre 0 y 100
+    misDatos.humedad_tierra = constrain(porcentaje, 0, 100);
+    
+    Serial.print("✅ Humedad: ");
+    Serial.print(misDatos.humedad_tierra);
+    Serial.println("%");
   }
 
   // Enviamos los datos
